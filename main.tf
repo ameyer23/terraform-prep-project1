@@ -1,12 +1,42 @@
 # Configure the AWS Provider - contains credentials 
 provider "aws" {
-  region = "us-east-1"
+  region  = "us-east-1"
   profile = var.profile_name
 }
 
 #Retrieve the list of AZs in the current AWS region
+#NOTE: Data blocks are used to query APIs (like AWS) of other workspaces
 data "aws_availability_zones" "available" {}
 data "aws_region" "current" {}
+
+
+
+# Terraform Data Block - Lookup Ubuntu 20.04
+data "aws_ami" "ubuntu" {
+  most_recent = true
+
+  filter {
+    name   = "name"
+    #values = ["ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*"]
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+
+  owners = ["099720109477"]
+}
+
+
+#Create 3 local variables 
+locals {
+  team        = "api_mgmt_dev"
+  application = "corp_api"
+  server_name = "ec2-terraprep1-${var.environment}-api-${var.variables_sub_az}"
+}
 
 #Define the VPC 
 resource "aws_vpc" "vpc" {
@@ -16,6 +46,7 @@ resource "aws_vpc" "vpc" {
     Name        = var.vpc_name
     Environment = "terra-prep1-environment"
     Terraform   = "true"
+    Region      = data.aws_region.current.name    #the aws_region data source has 3 possible attributes (name, endpoint, description)
   }
 }
 
@@ -118,21 +149,68 @@ resource "aws_nat_gateway" "nat_gateway" {
 }
 
 
+/* ########################################################################################################
+
+# Terraform Resource Block - To Build EC2 instance in Public Subnet - without using variables
+resource "aws_instance" "web_server" {                            # BLOCK
+  ami           = data.aws_ami.ubuntu.id                          # Argument with data expression
+  instance_type = "t2.micro"                                      # Argument
+  subnet_id     = aws_subnet.public_subnets["public_subnet_1"].id # Argument with value as expression
+  tags = {
+    Name = "terra-prep1 EC2 web server"
+  }
+}
+*/ ########################################################################################################
+
+
+
+# Terraform Resource Block - To Build EC2 instance in Public Subnet - same as above but using LOCAL VARIABLES and DATA BLOCK
+# NOTE that locals were used in the tags section
+resource "aws_instance" "web_server" {                            # BLOCK
+  ami           = data.aws_ami.ubuntu.id                          # Argument with data expression
+  instance_type = "t2.micro"                                      # Argument
+  subnet_id     = aws_subnet.public_subnets["public_subnet_1"].id # Argument with value as expression
+  tags = {
+    Name  = local.server_name
+    Owner = local.team
+    App   = local.application
+  }
+}
+
+
+/* ########################################################################################################
+*/ ########################################################################################################
+
+
+#Add new public subnet
+resource "aws_subnet" "variables-subnet" {
+  vpc_id                  = aws_vpc.vpc.id
+  cidr_block              = var.variables_sub_cidr
+  availability_zone       = var.variables_sub_az
+  map_public_ip_on_launch = var.variables_sub_auto_ip
+
+  tags = {
+    Name      = "sub-variables${var.variables_sub_az}"
+    Terraform = "true"
+  }
+}
+
+
 #Add S3 bucket, refer random provider to name bucket
-resource "aws_s3_bucket" "my-new-S3-bucket" {   
+resource "aws_s3_bucket" "my-new-S3-bucket" {
   bucket = "terra-prep1-testbucket-${random_id.randomness.hex}"
 
-  tags = {     
-    Name = "My S3 Bucket"     
-    Purpose = "First terra test bucket"   
-  } 
+  tags = {
+    Name    = "My S3 Bucket"
+    Purpose = "First terra test bucket"
+  }
 }
 
 #Add bucket controls - ACL
-resource "aws_s3_bucket_ownership_controls" "my_new_bucket_acl" {   
-  bucket = aws_s3_bucket.my-new-S3-bucket.id  
-  rule {     
-    object_ownership = "BucketOwnerPreferred"   
+resource "aws_s3_bucket_ownership_controls" "my_new_bucket_acl" {
+  bucket = aws_s3_bucket.my-new-S3-bucket.id
+  rule {
+    object_ownership = "BucketOwnerPreferred"
   }
 }
 
@@ -161,3 +239,6 @@ resource "aws_security_group" "my-new-security-group" {
 resource "random_id" "randomness" {
   byte_length = 5
 }
+
+
+

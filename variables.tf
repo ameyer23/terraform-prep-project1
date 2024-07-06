@@ -34,4 +34,29 @@ variable "public_subnets" {
   }
 }
 
+variable "variables_sub_cidr" {
+  description = "CIDR Block for the Variables Subnet"
+  default     = "10.0.202.0/24"
+  type        = string
+}
+
+variable "variables_sub_az" {
+  description = "Availability Zone used Variables Subnet"
+  default     = "us-east-1a"
+  type        = string
+}
+
+variable "variables_sub_auto_ip" {
+  description = "Set Automatic IP Assigment for Variables Subnet"
+  default     = true
+  type        = bool
+}
+
+variable "environment" {
+  description = "Environment for deployment"
+  default     = "dev"
+  type        = string
+
+}
+
 
