@@ -276,7 +276,7 @@ resource "aws_instance" "ubuntu_server" {
 
   # set local-exec provisioner - local command that ensures private key is permissioned correctly
   provisioner "local-exec" {
-    command = "chmod 600 ${local_file.private_key_pem.filename}"  #interpolation was wrong here
+    command = "chmod 600 ${local_file.private_key_pem.filename}"  
     #command = "chmod 600 MyAWSKey.pem"
   }
 
