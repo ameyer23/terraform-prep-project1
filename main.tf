@@ -1,9 +1,10 @@
 
+# Enhanced Remote backend - Terraform cloud 
 # Configure the AWS Provider - contains credentials 
 provider "aws" {
   #region  = "us-east-1"   #not specifying workspaces
   region  = local.region #specifies workspaces
-  profile = var.profile_name
+  #profile = var.profile_name  #no need for this when using terra cloud 
 
   default_tags { #tags all terraform resources 
     tags = {
@@ -13,6 +14,8 @@ provider "aws" {
     }
   }
 }
+
+
 
 #Retrieve the list of AZs in the current AWS region
 #NOTE: Data blocks are used to query APIs (like AWS) of other workspaces
@@ -389,7 +392,7 @@ module "autoscaling" {
   instance_type = "t3.micro"
 
   tags = {
-    Name = "terraprep-asg"
+    Name = "terraprep-asg-instance"
   }
 
 }
@@ -443,6 +446,7 @@ resource "aws_instance" "web_server_2" {
   instance_type = "t3.micro"
   subnet_id     = aws_subnet.public_subnets["public_subnet_2"].id
   tags = {
-    Name = "Web EC2 Server 2"
+    Name = "Web EC2 Server 2.0"
   }
 }
+

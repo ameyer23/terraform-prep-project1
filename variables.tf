@@ -4,10 +4,12 @@ variable "aws_region" {
 
 }
 
-variable "profile_name" {
-  type    = string
-  default = "terra-prep1"
-}
+#no need for this when using terra cloud 
+#variable "profile_name" {
+# type    = string
+#  #default = "terra-prep1"  
+  #default = TF_VAR_proflle_name
+#}
 
 variable "vpc_name" {
   type    = string

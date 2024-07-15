@@ -44,7 +44,7 @@ resource "aws_instance" "web" {
   }
 
   tags = {
-    "Name"        = "Web Server from Module"
+    "Name"        = "Web Server Module"
     "Environment" = "Training"
   }
 
