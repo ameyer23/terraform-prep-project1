@@ -1,4 +1,3 @@
-#Workspaces
 
 # Configure the AWS Provider - contains credentials 
 provider "aws" {
@@ -47,13 +46,13 @@ data "aws_ami" "ubuntu" {
 locals {
   team        = "api_mgmt_dev"
   application = "corp_api"
-  server_name = "2-terraprep1-ec2-${var.environment}-api-${data.aws_availability_zones.available.names[0]}"
+  server_name = "2-terraprep1-ec2-${var.environment}-api-${var.variables_sub_az}"
   #region = "us-east-1"          #not specifying workspaces
   region      = terraform.workspace == "default" ? "us-east-1" : "us-west-2" #specify workspace, using local variable
-  environment = terraform.workspace
-  #environment = terraform.workspace == "default" ? "production" : "development" #sets default workspace to production
-}
+  environment = terraform.workspace == "default" ? "production" : "development"
 
+
+}
 
 #Define the VPC 
 resource "aws_vpc" "vpc" {
@@ -80,7 +79,6 @@ resource "aws_subnet" "private_subnets" {
     Terraform = "true"
   }
 }
-
 
 #Deploy the public subnets
 resource "aws_subnet" "public_subnets" {
@@ -168,6 +166,19 @@ resource "aws_nat_gateway" "nat_gateway" {
 }
 
 
+#Add new public subnet
+resource "aws_subnet" "variables-subnet" {
+  vpc_id                  = aws_vpc.vpc.id
+  cidr_block              = var.variables_sub_cidr
+  availability_zone       = var.variables_sub_az
+  map_public_ip_on_launch = var.variables_sub_auto_ip
+
+  tags = {
+    Name      = "sub-variables-${var.variables_sub_az}"
+    Terraform = "true"
+  }
+}
+
 
 #Add S3 bucket, refer random provider to name bucket
 resource "aws_s3_bucket" "my-new-S3-bucket" {
@@ -215,6 +226,52 @@ resource "random_id" "randomness" {
 }
 
 
+/* ########################################################################################################
+# Terraform Resource Block - To Build EC2 - Using hardcoded values
+# Using Amazon Linux AMI
+resource "aws_instance" "web" {
+  ami           = "ami-06c68f701d8090592"
+  instance_type = "t2.micro"
+  subnet_id              = "subnet-0313a08c5b2918a99" #us-east-1b az
+  vpc_security_group_ids = ["sg-00c21d351580cc306"]   #default sg
+
+  tags = {
+    Name        = "1-terraprep1-ec2"
+    Description = "Initial EC2 - hardcoded values"
+  }
+}
+*/ ########################################################################################################
+
+
+/* ########################################################################################################
+# Terraform Resource Block - To Build EC2 instance in Public Subnet - without using variables
+resource "aws_instance" "web_server" {                            # BLOCK
+  ami           = data.aws_ami.ubuntu.id                          # Argument with data expression
+  instance_type = "t2.micro"                                      # Argument
+  subnet_id     = aws_subnet.public_subnets["public_subnet_1"].id # Argument with value as expression
+  tags = {
+    Name = "terra-prep1 EC2 web server"
+  }
+}
+*/ ########################################################################################################
+
+
+/* ########################################################################################################
+# Terraform Resource Block - To Build EC2 instance in Public Subnet - same as above but using LOCAL VARIABLES and DATA BLOCK
+# NOTE that locals were used in the tags section
+resource "aws_instance" "web_server" {                            # BLOCK
+  ami           = data.aws_ami.ubuntu.id                          # Argument with data expression
+  instance_type = "t2.micro"                                      # Argument
+  subnet_id     = aws_subnet.public_subnets["public_subnet_1"].id # Argument with value as expression
+  tags = {
+    Name        = local.server_name
+    Owner       = local.team
+    App         = local.application
+    Description = "Second EC2 - Values set using data block and locals"
+  }
+}
+*/ ########################################################################################################
+
 # Terraform Resource Block - To Build EC2 Ubuntu web server instance in Public Subnet 
 resource "aws_instance" "ubuntu_server" {
   ami                         = data.aws_ami.ubuntu.id
@@ -224,14 +281,17 @@ resource "aws_instance" "ubuntu_server" {
   associate_public_ip_address = true
   key_name                    = aws_key_pair.generated.key_name #associate key
   connection {                                                  #connection block: defines how to connect to server 
+    #type        = "ssh"
     user        = "ubuntu" #username that connects to server
     private_key = tls_private_key.generated.private_key_pem
     host        = self.public_ip
+    #agent       = false
   }
 
   # set local-exec provisioner - local command that ensures private key is permissioned correctly
   provisioner "local-exec" {
     command = "chmod 600 ${local_file.private_key_pem.filename}"
+    #command = "chmod 600 MyAWSKey.pem"
   }
 
   # set remote-exec provisioner - runs remote commands on remote resource which is the Terra instance
@@ -254,6 +314,7 @@ resource "aws_instance" "ubuntu_server" {
 
 
 
+
 # Generate TLS self signed certificate and saving the private key locally
 resource "tls_private_key" "generated" {
   algorithm = "RSA"
@@ -264,6 +325,7 @@ resource "local_file" "private_key_pem" {
   content  = tls_private_key.generated.private_key_pem
   filename = "MyAWSKey.pem"
 }
+
 
 # Generate an AWS SSH key pair for instance
 resource "aws_key_pair" "generated" {
@@ -351,5 +413,22 @@ resource "aws_security_group" "vpc-ping" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
+
+
+
+/* ########################################################################################################
+# Import resource from AWS
+# when running in CLI, import requires address within Terraform to import into (resource name,  and ID from AWS to be imported
+# add ami, instance type from running terraform state show on this resource
+
+resource "aws_instance" "aws_linux" {
+  ami           = "ami-01fccab91b456acc2" # Argument with data expression
+  instance_type = "t2.micro"
+  tags = {
+    Name = "import-ubuntu"
+
+}
+}
+*/ ########################################################################################################
 
 

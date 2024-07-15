@@ -1,8 +1,15 @@
-
 # Configure the AWS Provider - contains credentials 
 provider "aws" {
-  region  = "us-east-1"
+  region  = "us-east-1"   #not specifying workspaces
   profile = var.profile_name
+
+  default_tags { #tags all terraform resources 
+    tags = {
+      Environment = local.environment
+      Owner       = "andrea"
+      Provisioned = "Terraform"
+    }
+  }
 }
 
 #Retrieve the list of AZs in the current AWS region
@@ -32,11 +39,17 @@ data "aws_ami" "ubuntu" {
 }
 
 
-#Create 3 local variables 
+#Create  local variables 
+# region and enviroment map workspaces to regions 
 locals {
   team        = "api_mgmt_dev"
   application = "corp_api"
   server_name = "2-terraprep1-ec2-${var.environment}-api-${var.variables_sub_az}"
+  #region = "us-east-1"          #not specifying workspaces
+  region      = terraform.workspace == "default" ? "us-east-1" : "us-west-2" #specify workspace, using local variable
+  environment = terraform.workspace == "default" ? "production" : "development"
+
+
 }
 
 #Define the VPC 
@@ -44,7 +57,8 @@ resource "aws_vpc" "vpc" {
   cidr_block = var.vpc_cidr
 
   tags = {
-    Name        = var.vpc_name
+    #Name        = var.vpc_name
+    Name        = "${var.vpc_name}-${local.environment}" #name containts workspace name
     Environment = "terra-prep1-environment"
     Terraform   = "true"
     Region      = data.aws_region.current.name #the aws_region data source has 3 possible attributes (name, endpoint, description)
@@ -150,125 +164,17 @@ resource "aws_nat_gateway" "nat_gateway" {
 }
 
 
-#Add new public subnet
-resource "aws_subnet" "variables-subnet" {
-  vpc_id                  = aws_vpc.vpc.id
-  cidr_block              = var.variables_sub_cidr
-  availability_zone       = var.variables_sub_az
-  map_public_ip_on_launch = var.variables_sub_auto_ip
-
-  tags = {
-    Name      = "sub-variables${var.variables_sub_az}"
-    Terraform = "true"
-  }
-}
-
-
-#Add S3 bucket, refer random provider to name bucket
-resource "aws_s3_bucket" "my-new-S3-bucket" {
-  bucket = "terra-prep1-testbucket-${random_id.randomness.hex}"
-
-  tags = {
-    Name    = "My S3 Bucket"
-    Purpose = "First terra test bucket"
-  }
-}
-
-#Add bucket controls - ACL
-resource "aws_s3_bucket_ownership_controls" "my_new_bucket_acl" {
-  bucket = aws_s3_bucket.my-new-S3-bucket.id
-  rule {
-    object_ownership = "BucketOwnerPreferred"
-  }
-}
-
-#Add security group
-resource "aws_security_group" "my-new-security-group" {
-  name        = "web_server_inbound"
-  description = "Allow inbound traffic on tcp/443"
-  vpc_id      = aws_vpc.vpc.id
-
-  ingress {
-    description = "Allow 443 from the Internet"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name    = "web_server_inbound"
-    Purpose = "terra-prep1 sgxs"
-  }
-}
-
-#Add random provider and use the string produced to name bucket
-#helpful for s3 bucket creation automation
-#this can also be added in terraform.tf file
-resource "random_id" "randomness" {
-  byte_length = 5
-}
-
-
-#/* ########################################################################################################
-
-# Terraform Resource Block - To Build EC2 - Using hardcoded values
-# Using Amazon Linux AMI
-resource "aws_instance" "web" {
-  ami           = "ami-06c68f701d8090592"
-  instance_type = "t2.micro"
-
-  subnet_id              = "subnet-0313a08c5b2918a99" #us-east-1b az
-  vpc_security_group_ids = ["sg-00c21d351580cc306"]   #default sg
-
-  tags = {
-    Name        = "1-terraprep1-ec2"
-    Description = "Initial EC2 - hardcoded values"
-  }
-}
-#*/ ########################################################################################################
-
-
-/* ########################################################################################################
-
-# Terraform Resource Block - To Build EC2 instance in Public Subnet - without using variables
-resource "aws_instance" "web_server" {                            # BLOCK
-  ami           = data.aws_ami.ubuntu.id                          # Argument with data expression
-  instance_type = "t2.micro"                                      # Argument
-  subnet_id     = aws_subnet.public_subnets["public_subnet_1"].id # Argument with value as expression
-  tags = {
-    Name = "terra-prep1 EC2 web server"
-  }
-}
-*/ ########################################################################################################
-
-
-
-# Terraform Resource Block - To Build EC2 instance in Public Subnet - same as above but using LOCAL VARIABLES and DATA BLOCK
-# NOTE that locals were used in the tags section
-resource "aws_instance" "web_server" {                            # BLOCK
-  ami           = data.aws_ami.ubuntu.id                          # Argument with data expression
-  instance_type = "t2.micro"                                      # Argument
-  subnet_id     = aws_subnet.public_subnets["public_subnet_1"].id # Argument with value as expression
-  tags = {
-    Name        = local.server_name
-    Owner       = local.team
-    App         = local.application
-    Description = "Second EC2 - Values set using data block and locals"
-  }
-}
-
 # Terraform Resource Block - To Build EC2 Ubuntu web server instance in Public Subnet 
 resource "aws_instance" "ubuntu_server" {
   ami                         = data.aws_ami.ubuntu.id
   instance_type               = "t2.micro"
   subnet_id                   = aws_subnet.public_subnets["public_subnet_1"].id
-  security_groups             = [aws_security_group.vpc-ping.id, aws_security_group.ingress-ssh.id, aws_security_group.vpc-web.id] 
+  security_groups             = [aws_security_group.vpc-ping.id, aws_security_group.ingress-ssh.id, aws_security_group.vpc-web.id]
   associate_public_ip_address = true
-  key_name                    = aws_key_pair.generated.key_name      #associate key
-  connection {                                                       #connection block: defines how to connect to server 
+  key_name                    = aws_key_pair.generated.key_name #associate key
+  connection {                                                  #connection block: defines how to connect to server 
     #type        = "ssh"
-    user        = "ubuntu"                                           #username that connects to server
+    user        = "ubuntu" #username that connects to server
     private_key = tls_private_key.generated.private_key_pem
     host        = self.public_ip
     #agent       = false
@@ -276,28 +182,27 @@ resource "aws_instance" "ubuntu_server" {
 
   # set local-exec provisioner - local command that ensures private key is permissioned correctly
   provisioner "local-exec" {
-    command = "chmod 600 ${local_file.private_key_pem.filename}"  
+    command = "chmod 600 ${local_file.private_key_pem.filename}"
     #command = "chmod 600 MyAWSKey.pem"
   }
 
   # set remote-exec provisioner - runs remote commands on remote resource which is the Terra instance
   # provisioner can clone web application code to the instance and then invoke the setup script
   provisioner "remote-exec" {
-    inline = [                #list of commands to be executed by provisioner on instance
-      "sudo rm -rf /tmp",     #cleanup tmp directory on server 
+    inline = [ #list of commands to be executed by provisioner on instance
+      #"exit 2", # server will error out. This condition can be used to handle failures in scripts
+      "sudo rm -rf /tmp",                                                    #cleanup tmp directory on server 
       "sudo git clone https://github.com/hashicorp/demo-terraform-101 /tmp", #clone web app from repo
-      "sudo sh /tmp/assets/setup-web.sh",               # web app deployment script path
-      ]
-    }
+      "sudo sh /tmp/assets/setup-web.sh",                                    # web app deployment script path
+    ]
+  }
 
-    tags = {
-      Name = "Ubuntu EC2 Web Server"
-    }
-
-
+  tags = {
+    Name = "Ubuntu EC2 Web Server"
   }
 
 
+}
 
 
 # Generate TLS self signed certificate and saving the private key locally
@@ -314,7 +219,7 @@ resource "local_file" "private_key_pem" {
 
 # Generate an AWS SSH key pair for instance
 resource "aws_key_pair" "generated" {
-  key_name   = "MyAWSKey"       #key name in aws
+  key_name   = "MyAWSKey" #key name in aws
   public_key = tls_private_key.generated.public_key_openssh
 
   lifecycle {
@@ -328,7 +233,7 @@ resource "aws_key_pair" "generated" {
 resource "aws_security_group" "ingress-ssh" {
   name   = "allow-all-ssh"
   vpc_id = aws_vpc.vpc.id
-  
+
   # Allow SSH access from any IP address
   ingress {
     cidr_blocks = [
@@ -354,7 +259,7 @@ resource "aws_security_group" "vpc-web" {
   vpc_id      = aws_vpc.vpc.id
   description = "Web Traffic"
   ingress {
-    description = "Allow Port 80"       #HTTP and HTTPS
+    description = "Allow Port 80" #HTTP and HTTPS
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
@@ -398,7 +303,5 @@ resource "aws_security_group" "vpc-ping" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
-
-
 
 
