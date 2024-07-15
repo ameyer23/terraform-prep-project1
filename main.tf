@@ -1,6 +1,8 @@
+
 # Configure the AWS Provider - contains credentials 
 provider "aws" {
-  region  = "us-east-1"   #not specifying workspaces
+  #region  = "us-east-1"   #not specifying workspaces
+  region  = local.region #specifies workspaces
   profile = var.profile_name
 
   default_tags { #tags all terraform resources 
@@ -44,21 +46,18 @@ data "aws_ami" "ubuntu" {
 locals {
   team        = "api_mgmt_dev"
   application = "corp_api"
-  server_name = "2-terraprep1-ec2-${var.environment}-api-${var.variables_sub_az}"
-  #region = "us-east-1"          #not specifying workspaces
-  region      = terraform.workspace == "default" ? "us-east-1" : "us-west-2" #specify workspace, using local variable
-  environment = terraform.workspace == "default" ? "production" : "development"
-
-
+  server_name = "2-terraprep1-ec2-${var.environment}-api-${data.aws_availability_zones.available.names[0]}"
+  region = "us-east-1"          #not specifying workspaces
+  environment = terraform.workspace
 }
+
 
 #Define the VPC 
 resource "aws_vpc" "vpc" {
   cidr_block = var.vpc_cidr
 
   tags = {
-    #Name        = var.vpc_name
-    Name        = "${var.vpc_name}-${local.environment}" #name containts workspace name
+    Name        = var.vpc_name
     Environment = "terra-prep1-environment"
     Terraform   = "true"
     Region      = data.aws_region.current.name #the aws_region data source has 3 possible attributes (name, endpoint, description)
@@ -77,6 +76,7 @@ resource "aws_subnet" "private_subnets" {
     Terraform = "true"
   }
 }
+
 
 #Deploy the public subnets
 resource "aws_subnet" "public_subnets" {
@@ -164,6 +164,30 @@ resource "aws_nat_gateway" "nat_gateway" {
 }
 
 
+
+
+
+#Add security group
+resource "aws_security_group" "my-new-security-group" {
+  name        = "web_server_inbound"
+  description = "Allow inbound traffic on tcp/443"
+  vpc_id      = aws_vpc.vpc.id
+
+  ingress {
+    description = "Allow 443 from the Internet"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name    = "web_server_inbound"
+    Purpose = "terra-prep1 sgxs"
+  }
+}
+
+
 # Terraform Resource Block - To Build EC2 Ubuntu web server instance in Public Subnet 
 resource "aws_instance" "ubuntu_server" {
   ami                         = data.aws_ami.ubuntu.id
@@ -173,17 +197,14 @@ resource "aws_instance" "ubuntu_server" {
   associate_public_ip_address = true
   key_name                    = aws_key_pair.generated.key_name #associate key
   connection {                                                  #connection block: defines how to connect to server 
-    #type        = "ssh"
     user        = "ubuntu" #username that connects to server
     private_key = tls_private_key.generated.private_key_pem
     host        = self.public_ip
-    #agent       = false
   }
 
   # set local-exec provisioner - local command that ensures private key is permissioned correctly
   provisioner "local-exec" {
     command = "chmod 600 ${local_file.private_key_pem.filename}"
-    #command = "chmod 600 MyAWSKey.pem"
   }
 
   # set remote-exec provisioner - runs remote commands on remote resource which is the Terra instance
@@ -205,6 +226,7 @@ resource "aws_instance" "ubuntu_server" {
 }
 
 
+
 # Generate TLS self signed certificate and saving the private key locally
 resource "tls_private_key" "generated" {
   algorithm = "RSA"
@@ -215,7 +237,6 @@ resource "local_file" "private_key_pem" {
   content  = tls_private_key.generated.private_key_pem
   filename = "MyAWSKey.pem"
 }
-
 
 # Generate an AWS SSH key pair for instance
 resource "aws_key_pair" "generated" {
@@ -305,3 +326,123 @@ resource "aws_security_group" "vpc-ping" {
 }
 
 
+# Module 1: create instance - source locally 
+module "server" {
+  source          = "./modules/server"       #path of module, local or in registry
+  ami             = data.aws_ami.ubuntu.id
+  subnet_id       = aws_subnet.public_subnets["public_subnet_3"].id
+  size =  "t3.micro" 
+  security_groups = [
+    aws_security_group.vpc-ping.id,
+    aws_security_group.ingress-ssh.id,
+    aws_security_group.vpc-web.id
+  ]
+}
+
+#output info about server module, the only way to pull out info from modules
+output "public_ip" {
+  value = module.server.public_ip
+}
+
+output "public_dns" {
+  value = module.server.public_dns
+}
+output "size" {
+  value = module.server.size
+}
+
+
+# Module 2: create instance - source locally  
+module "server_subnet_1" {
+  source          = "./modules/web_server"
+  ami             = data.aws_ami.ubuntu.id
+  key_name        = aws_key_pair.generated.key_name
+  user            = "ubuntu"
+  private_key     = tls_private_key.generated.private_key_pem
+  subnet_id       = aws_subnet.public_subnets["public_subnet_1"].id
+  security_groups = [aws_security_group.vpc-ping.id, 
+  aws_security_group.ingress-ssh.id, 
+  aws_security_group.vpc-web.id]
+}
+
+
+# Module 3: create autoscaling group - source from public registry OR from GitHub
+module "autoscaling" {
+  #source  = "terraform-aws-modules/autoscaling/aws"
+  #version = "7.7.0"    #only for regirstry
+  source  = "github.com/terraform-aws-modules/terraform-aws-autoscaling"
+
+  # Create Autoscaling group
+  name = "terraprep-asg"
+
+  vpc_zone_identifier = [aws_subnet.private_subnets["private_subnet_1"].id, 
+  aws_subnet.private_subnets["private_subnet_2"].id, 
+  aws_subnet.private_subnets["private_subnet_3"].id]
+  min_size            = 0
+  max_size            = 1
+  desired_capacity    = 1
+
+  # Create Launch template
+  create_launch_template = true
+
+  image_id      = data.aws_ami.ubuntu.id
+  instance_type = "t3.micro"
+
+  tags = {
+    Name = "terraprep-asg"
+  }
+
+}
+
+# output info about autoscaling module, the only way to pull out info from modules
+# THESE SHOWN AS OUTPUT IN TERMINAL
+output "asg_group_size" {
+  value = module.autoscaling.autoscaling_group_max_size
+}
+
+
+
+# Module 4: create s3 bucket - sourced from public registry
+module "s3-bucket" {
+  source  = "terraform-aws-modules/s3-bucket/aws"
+  version = "4.1.2"
+}
+
+
+output "s3_bucket_name" {
+  value = module.s3-bucket.s3_bucket_bucket_domain_name
+}
+
+
+# Module 5: create vpc - sourced from public registry
+# This module contains all of the steps of VPC creation
+module "vpc" {
+  source = "terraform-aws-modules/vpc/aws"
+  #version = ">=5.9.0" #if this is not specified, latest is downloaded
+
+  name = "my-vpc-terraform"
+  cidr = "10.0.0.0/16"
+
+  azs             = ["us-east-1a", "us-east-1b", "us-east-1c"]
+  private_subnets = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+  public_subnets  = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
+
+  enable_nat_gateway = true
+  enable_vpn_gateway = true
+
+  tags = {
+    Name = "VPC from Module"
+    Terraform = "true"
+    Environment = "dev"
+  }
+}
+
+# Create EC2 instance in Public Subnet
+resource "aws_instance" "web_server_2" {
+  ami           = data.aws_ami.ubuntu.id
+  instance_type = "t3.micro"
+  subnet_id     = aws_subnet.public_subnets["public_subnet_2"].id
+  tags = {
+    Name = "Web EC2 Server 2"
+  }
+}
