@@ -1,3 +1,6 @@
+
+#Workspaces
+
 variable "aws_region" {
   type    = string
   default = "us-east-1" #hard coded. When specifying workspaces, leave default out. Use locals instead. 
@@ -41,11 +44,6 @@ variable "variables_sub_cidr" {
   type        = string
 }
 
-variable "variables_sub_az" {
-  description = "Availability Zone used Variables Subnet"
-  default     = "us-east-1a" #without specifying workspace
-  type        = string
-}
 
 variable "variables_sub_auto_ip" {
   description = "Set Automatic IP Assigment for Variables Subnet"
@@ -59,5 +57,4 @@ variable "environment" {
   type        = string
 
 }
-
 

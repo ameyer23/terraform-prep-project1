@@ -1,6 +1,9 @@
+#Workspaces
+
 # Configure the AWS Provider - contains credentials 
 provider "aws" {
-  region  = "us-east-1"   #not specifying workspaces
+  #region  = "us-east-1"   #not specifying workspaces
+  region  = local.region #specifies workspaces
   profile = var.profile_name
 
   default_tags { #tags all terraform resources 
@@ -44,13 +47,13 @@ data "aws_ami" "ubuntu" {
 locals {
   team        = "api_mgmt_dev"
   application = "corp_api"
-  server_name = "2-terraprep1-ec2-${var.environment}-api-${var.variables_sub_az}"
+  server_name = "2-terraprep1-ec2-${var.environment}-api-${data.aws_availability_zones.available.names[0]}"
   #region = "us-east-1"          #not specifying workspaces
   region      = terraform.workspace == "default" ? "us-east-1" : "us-west-2" #specify workspace, using local variable
-  environment = terraform.workspace == "default" ? "production" : "development"
-
-
+  environment = terraform.workspace
+  #environment = terraform.workspace == "default" ? "production" : "development" #sets default workspace to production
 }
+
 
 #Define the VPC 
 resource "aws_vpc" "vpc" {
@@ -77,6 +80,7 @@ resource "aws_subnet" "private_subnets" {
     Terraform = "true"
   }
 }
+
 
 #Deploy the public subnets
 resource "aws_subnet" "public_subnets" {
@@ -164,6 +168,53 @@ resource "aws_nat_gateway" "nat_gateway" {
 }
 
 
+
+#Add S3 bucket, refer random provider to name bucket
+resource "aws_s3_bucket" "my-new-S3-bucket" {
+  bucket = "terra-prep1-testbucket-${random_id.randomness.hex}"
+
+  tags = {
+    Name    = "My S3 Bucket"
+    Purpose = "First terra test bucket"
+  }
+}
+
+#Add bucket controls - ACL
+resource "aws_s3_bucket_ownership_controls" "my_new_bucket_acl" {
+  bucket = aws_s3_bucket.my-new-S3-bucket.id
+  rule {
+    object_ownership = "BucketOwnerPreferred"
+  }
+}
+
+#Add security group
+resource "aws_security_group" "my-new-security-group" {
+  name        = "web_server_inbound"
+  description = "Allow inbound traffic on tcp/443"
+  vpc_id      = aws_vpc.vpc.id
+
+  ingress {
+    description = "Allow 443 from the Internet"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name    = "web_server_inbound"
+    Purpose = "terra-prep1 sgxs"
+  }
+}
+
+#Add random provider and use the string produced to name bucket
+#helpful for s3 bucket creation automation
+#this can also be added in terraform.tf file
+resource "random_id" "randomness" {
+  byte_length = 5
+}
+
+
 # Terraform Resource Block - To Build EC2 Ubuntu web server instance in Public Subnet 
 resource "aws_instance" "ubuntu_server" {
   ami                         = data.aws_ami.ubuntu.id
@@ -173,17 +224,14 @@ resource "aws_instance" "ubuntu_server" {
   associate_public_ip_address = true
   key_name                    = aws_key_pair.generated.key_name #associate key
   connection {                                                  #connection block: defines how to connect to server 
-    #type        = "ssh"
     user        = "ubuntu" #username that connects to server
     private_key = tls_private_key.generated.private_key_pem
     host        = self.public_ip
-    #agent       = false
   }
 
   # set local-exec provisioner - local command that ensures private key is permissioned correctly
   provisioner "local-exec" {
     command = "chmod 600 ${local_file.private_key_pem.filename}"
-    #command = "chmod 600 MyAWSKey.pem"
   }
 
   # set remote-exec provisioner - runs remote commands on remote resource which is the Terra instance
@@ -205,6 +253,7 @@ resource "aws_instance" "ubuntu_server" {
 }
 
 
+
 # Generate TLS self signed certificate and saving the private key locally
 resource "tls_private_key" "generated" {
   algorithm = "RSA"
@@ -215,7 +264,6 @@ resource "local_file" "private_key_pem" {
   content  = tls_private_key.generated.private_key_pem
   filename = "MyAWSKey.pem"
 }
-
 
 # Generate an AWS SSH key pair for instance
 resource "aws_key_pair" "generated" {

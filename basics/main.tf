@@ -1,6 +1,8 @@
+
 # Configure the AWS Provider - contains credentials 
 provider "aws" {
-  region  = "us-east-1"   #not specifying workspaces
+  #region  = "us-east-1"   #not specifying workspaces
+  region  = local.region #specifies workspaces
   profile = var.profile_name
 
   default_tags { #tags all terraform resources 
@@ -164,6 +166,112 @@ resource "aws_nat_gateway" "nat_gateway" {
 }
 
 
+#Add new public subnet
+resource "aws_subnet" "variables-subnet" {
+  vpc_id                  = aws_vpc.vpc.id
+  cidr_block              = var.variables_sub_cidr
+  availability_zone       = var.variables_sub_az
+  map_public_ip_on_launch = var.variables_sub_auto_ip
+
+  tags = {
+    Name      = "sub-variables-${var.variables_sub_az}"
+    Terraform = "true"
+  }
+}
+
+
+#Add S3 bucket, refer random provider to name bucket
+resource "aws_s3_bucket" "my-new-S3-bucket" {
+  bucket = "terra-prep1-testbucket-${random_id.randomness.hex}"
+
+  tags = {
+    Name    = "My S3 Bucket"
+    Purpose = "First terra test bucket"
+  }
+}
+
+#Add bucket controls - ACL
+resource "aws_s3_bucket_ownership_controls" "my_new_bucket_acl" {
+  bucket = aws_s3_bucket.my-new-S3-bucket.id
+  rule {
+    object_ownership = "BucketOwnerPreferred"
+  }
+}
+
+#Add security group
+resource "aws_security_group" "my-new-security-group" {
+  name        = "web_server_inbound"
+  description = "Allow inbound traffic on tcp/443"
+  vpc_id      = aws_vpc.vpc.id
+
+  ingress {
+    description = "Allow 443 from the Internet"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name    = "web_server_inbound"
+    Purpose = "terra-prep1 sgxs"
+  }
+}
+
+#Add random provider and use the string produced to name bucket
+#helpful for s3 bucket creation automation
+#this can also be added in terraform.tf file
+resource "random_id" "randomness" {
+  byte_length = 5
+}
+
+
+/* ########################################################################################################
+# Terraform Resource Block - To Build EC2 - Using hardcoded values
+# Using Amazon Linux AMI
+resource "aws_instance" "web" {
+  ami           = "ami-06c68f701d8090592"
+  instance_type = "t2.micro"
+  subnet_id              = "subnet-0313a08c5b2918a99" #us-east-1b az
+  vpc_security_group_ids = ["sg-00c21d351580cc306"]   #default sg
+
+  tags = {
+    Name        = "1-terraprep1-ec2"
+    Description = "Initial EC2 - hardcoded values"
+  }
+}
+*/ ########################################################################################################
+
+
+/* ########################################################################################################
+# Terraform Resource Block - To Build EC2 instance in Public Subnet - without using variables
+resource "aws_instance" "web_server" {                            # BLOCK
+  ami           = data.aws_ami.ubuntu.id                          # Argument with data expression
+  instance_type = "t2.micro"                                      # Argument
+  subnet_id     = aws_subnet.public_subnets["public_subnet_1"].id # Argument with value as expression
+  tags = {
+    Name = "terra-prep1 EC2 web server"
+  }
+}
+*/ ########################################################################################################
+
+
+/* ########################################################################################################
+# Terraform Resource Block - To Build EC2 instance in Public Subnet - same as above but using LOCAL VARIABLES and DATA BLOCK
+# NOTE that locals were used in the tags section
+resource "aws_instance" "web_server" {                            # BLOCK
+  ami           = data.aws_ami.ubuntu.id                          # Argument with data expression
+  instance_type = "t2.micro"                                      # Argument
+  subnet_id     = aws_subnet.public_subnets["public_subnet_1"].id # Argument with value as expression
+  tags = {
+    Name        = local.server_name
+    Owner       = local.team
+    App         = local.application
+    Description = "Second EC2 - Values set using data block and locals"
+  }
+}
+*/ ########################################################################################################
+
 # Terraform Resource Block - To Build EC2 Ubuntu web server instance in Public Subnet 
 resource "aws_instance" "ubuntu_server" {
   ami                         = data.aws_ami.ubuntu.id
@@ -203,6 +311,8 @@ resource "aws_instance" "ubuntu_server" {
 
 
 }
+
+
 
 
 # Generate TLS self signed certificate and saving the private key locally
@@ -303,5 +413,22 @@ resource "aws_security_group" "vpc-ping" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
+
+
+
+/* ########################################################################################################
+# Import resource from AWS
+# when running in CLI, import requires address within Terraform to import into (resource name,  and ID from AWS to be imported
+# add ami, instance type from running terraform state show on this resource
+
+resource "aws_instance" "aws_linux" {
+  ami           = "ami-01fccab91b456acc2" # Argument with data expression
+  instance_type = "t2.micro"
+  tags = {
+    Name = "import-ubuntu"
+
+}
+}
+*/ ########################################################################################################
 
 

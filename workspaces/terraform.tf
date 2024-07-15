@@ -1,3 +1,4 @@
+#Workspaces
 
 # Setting Terraform and AWS Provider vesions 
 # Helpful for when codebase is not yet updated to keep up with new versions
@@ -29,3 +30,4 @@ terraform {
     }
   }
 }
+
