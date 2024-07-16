@@ -1,6 +1,6 @@
 provider "vault" {
   address = ""
-  #token#goes#here = "<rootttoken?>" 
+  #token goes here 
 }
 
 data "vault_generic_secret" "phone_number" {
