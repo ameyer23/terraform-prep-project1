@@ -1,5 +1,8 @@
 
 # Configure the AWS Provider - contains credentials 
+
+#CONTAINS ALL MODULES
+
 provider "aws" {
   #region  = "us-east-1"   #not specifying workspaces
   region  = local.region #specifies workspaces

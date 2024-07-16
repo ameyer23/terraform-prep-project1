@@ -1,6 +1,10 @@
 
 # Enhanced Remote backend - Terraform cloud 
 # Configure the AWS Provider - contains credentials 
+
+# Terraform cloud remote enhanced backend 
+
+
 provider "aws" {
   #region  = "us-east-1"   #not specifying workspaces
   region  = local.region #specifies workspaces

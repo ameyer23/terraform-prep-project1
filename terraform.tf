@@ -2,9 +2,6 @@
 # Helpful for when codebase is not yet updated to keep up with new versions
 # This downlods the latest AWS version that matches the constraint
 
-
-# Remote Enhanced Backend
-
 terraform {
  backend "remote" {
     hostname = "app.terraform.io"   #name of my enterprise server
@@ -18,28 +15,25 @@ terraform {
 
   #required_version = ">= 1.0.0"
   required_providers {
-    aws = {                       #AWS provider
+    aws = {
       source  = "hashicorp/aws"
-      version = ">= 3.0" #initial constratint
-      #version = "3.76.1"            #latest version
+      version = "~> 3.0"
     }
-    http = { #HTTP provider
+    http = {
       source  = "hashicorp/http"
-      version = "3.4.3"
+      version = "2.1.0"
     }
     random = {
       source  = "hashicorp/random"
-      version = "3.6.2" #former 3.6.2
+      version = "3.1.0"
     }
-    local = { #used to manage local resources
+    local = {
       source  = "hashicorp/local"
-      version = "2.5.1"
+      version = "2.1.0"
     }
     tls = {
-      source  = "hashicorp/tls" #used to create SSH Key
-      version = "4.0.5"
+      source  = "hashicorp/tls"
+      version = "3.1.0"
     }
   }
 }
-
-
