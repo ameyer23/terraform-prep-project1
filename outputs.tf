@@ -21,3 +21,14 @@ output "public_url" {
   value       = "https://${aws_instance.ubuntu_server.public_ip}:8080/index.html"
 }
 */
+
+
+/* output "public_ip" {  #web_server public IP
+  description = "This is the public IP of my web server"
+  value = aws_instance.web_server.public_ip
+} */
+
+output "ec2_instance_arn" {
+  value = aws_instance.web_server.arn
+  sensitive = true
+}

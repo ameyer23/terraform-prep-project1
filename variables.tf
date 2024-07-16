@@ -1,19 +1,18 @@
 variable "aws_region" {
   type    = string
-  default = "us-east-1" #hard coded. When specifying workspaces, leave default out. Use locals instead. 
+  default = "us-east-1"
 
 }
 
-#no need for this when using terra cloud 
-#variable "profile_name" {
-# type    = string
-#  #default = "terra-prep1"  
-  #default = TF_VAR_proflle_name
-#}
+variable "profile_name" {
+  type    = string
+  default = "terra-prep1"
+}
+
 
 variable "vpc_name" {
   type    = string
-  default = "terra-prep1"
+  default = "demo_vpc"
 }
 
 variable "vpc_cidr" {
@@ -36,25 +35,83 @@ variable "public_subnets" {
     "public_subnet_3" = 3
   }
 }
+variable "environment" {
+  description = "Environment for deployment"
+  type        = string
+  default     = "dev"
+}
 
 variable "variables_sub_cidr" {
   description = "CIDR Block for the Variables Subnet"
-  default     = "10.0.202.0/24"
   type        = string
+  default     = "10.0.202.0/24"
 }
 
+variable "variables_sub_az" {
+  description = "Availability Zone used for Variables Subnet"
+  type        = string
+  default     = "us-east-1a"
+}
 
 variable "variables_sub_auto_ip" {
   description = "Set Automatic IP Assigment for Variables Subnet"
-  default     = true
   type        = bool
+  default     = true
 }
 
-variable "environment" {
-  description = "Environment for deployment"
-  default     = "dev"
-  type        = string
+/* variable "phone_number" {
+  type      = string
+  sensitive = true
+} */
 
+variable "us-east-1-azs" {
+  type = list(string)
+  default = [
+    "us-east-1a",
+    "us-east-1b",
+    "us-east-1c",
+    "us-east-1d",
+    "us-east-1e"
+  ]
+}
+
+variable "ip" {
+  type = map(string)
+  default = {
+    prod = "10.0.150.0/24"
+    dev  = "10.0.250.0/24"
+  }
+}
+
+variable "env" {
+  type = map(any)
+  default = {
+    prod = {
+      ip = "10.0.150.0/24"
+      az = "us-east-1a"
+    }
+    dev = {
+      ip = "10.0.250.0/24"
+      az = "us-east-1e"
+    }
+  }
 }
 
 
+variable "num_1" {
+  type = number
+  description = "Numbers for function labs"
+  default = 88
+}
+
+variable "num_2" {
+  type = number
+  description = "Numbers for function labs"
+  default = 73
+}
+
+variable "num_3" {
+  type = number
+  description = "Numbers for function labs"
+  default = 52
+}

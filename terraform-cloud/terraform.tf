@@ -3,7 +3,7 @@
 # This downlods the latest AWS version that matches the constraint
 
 
-# Remote Enhanced Backend
+# Terraform cloud remote enhanced backend 
 
 terraform {
  backend "remote" {
